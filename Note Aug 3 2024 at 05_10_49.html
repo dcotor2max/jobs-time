@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تتبع ساعات العمل</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; }
+        th { background-color: #007bff; color: white; }
+        button { margin-top: 10px; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        .blue-button { background-color: #007bff; color: white; }
+        .red-button { background-color: #dc3545; color: white; }
+        .green-button { background-color: #28a745; color: white; }
+        .blue-button:hover { background-color: #0056b3; }
+        .red-button:hover { background-color: #c82333; }
+        .green-button:hover { background-color: #1e7e34; }
+        #fileOptions, #entryForm, #dataView { text-align: center; }
+        #downloadLink { display: none; }
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); justify-content: center; align-items: center; }
+        #modalContent { background: white; padding: 20px; border-radius: 5px; text-align: center; }
+        #modalContent button { margin: 5px; font-size: 16px; }
+        .hidden { display: none; }
+        .footer { text-align: center; margin-top: 20px; color: #555; }
+        .language-button { background-color: #007bff; color: white; border: none; padding: 10px 20px; cursor: pointer; font-size: 16px; border-radius: 5px; }
+        .language-button:hover { background-color: #0056b3; }
+        input[type="date"], input[type="time"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: calc(100% - 22px);
+            box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+            table { font-size: 14px; }
+            button { font-size: 14px; padding: 8px; }
+            .language-button { font-size: 14px; padding: 8px 16px; }
+        }
+    </style>
+</head>
+<body>
+    <h1 id="title">تتبع ساعات العمل</h1>
+    
+    <div id="fileOptions">
+        <h2 id="fileOptionsTitle">اختيار الملف</h2>
+        <button onclick="createNewFile()" class="blue-button" id="newFileButton">إنشاء ملف جديد</button>
+        <button onclick="importFile()" class="blue-button" id="importFileButton">استيراد ملف موجود</button>
+        <button onclick="openCurrentFile()" class="green-button" id="openFileButton">فتح الملف الحالي</button>
+        <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)">
+    </div>
+
+    <div id="entryForm" class="hidden">
+        <h2 id="entryFormTitle">إضافة إدخال جديد</h2>
+        <label for="date" id="dateLabel">التاريخ:</label><br>
+        <input type="date" id="date" required><br>
+        <label for="timeIn" id="timeInLabel">وقت الدخول:</label><br>
+        <input type="time" id="timeIn" required><br>
+        <label for="timeOut" id="timeOutLabel">وقت الخروج:</label><br>
+        <input type="time" id="timeOut" required><br>
+        <button onclick="addEntry()" class="blue-button" id="addEntryButton">إضافة</button>
+        <p id="message"></p>
+    </div>
+
+    <div id="dataView" class="hidden">
+        <h2 id="dataViewTitle">القائمة الكاملة</h2>
+        <table id="entriesTable">
+            <tr>
+                <th id="colDate">التاريخ</th>
+                <th id="colTimeIn">وقت الدخول</th>
+                <th id="colTimeOut">وقت الخروج</th>
+                <th id="colHours">الساعات</th>
+                <th id="colTotal">المجموع</th>
+                <th id="colActions">الإجراءات</th>
+            </tr>
+        </table>
+        <button onclick="exportToJSON()" class="blue-button" id="saveButton">تصدير JSON</button>
+        <a id="downloadLink" href="#" download="work_hours.json">تنزيل الملف</a>
+    </div>
+
+    <button class="language-button" onclick="toggleLanguage()" id="languageToggle">تبديل اللغة</button>
+
+    <div id="modal" class="hidden">
+        <div id="modalContent">
+            <p id="modalMessage"></p>
+            <button onclick="clearData()" class="blue-button" id="confirmClear">نعم</button>
+            <button onclick="hideClearDataModal()" class="red-button" id="cancelClear">لا</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Developed by Dr.MAX Mousa</p>
+    </div>
+
+    <script>
+        let entries = [];
+        let totalHours = 0;
+        let language = 'ar'; // default language
+        let editingIndex = null;
+
+        const translations = {
+            ar: {
+                title: 'تتبع ساعات العمل',
+                fileOptionsTitle: 'اختيار الملف',
+                newFileButton: 'إنشاء ملف جديد',
+                importFileButton: 'استيراد ملف موجود',
+                openFileButton: 'فتح الملف الحالي',
+                entryFormTitle: 'إضافة إدخال جديد',
+                dateLabel: 'التاريخ:',
+                timeInLabel: 'وقت الدخول:',
+                timeOutLabel: 'وقت الخروج:',
+                addEntryButton: 'إضافة',
+                messageFillFields: 'الرجاء ملء جميع الحقول',
+                messageAdded: 'تمت الإضافة بنجاح',
+                messageUpdated: 'تم التحديث بنجاح',
+                dataViewTitle: 'القائمة الكاملة',
+                colDate: 'التاريخ',
+                colTimeIn: 'وقت الدخول',
+                colTimeOut: 'وقت الخروج',
+                colHours: 'الساعات',
+                colTotal: 'المجموع',
+                colActions: 'الإجراءات',
+                saveButton: 'تصدير JSON',
+                confirmClear: 'نعم',
+                cancelClear: 'لا',
+                languageToggle: 'تبديل اللغة',
+                edit: 'تعديل',
+                delete: 'حذف',
+                confirmClearModal: 'هل أنت متأكد أنك تريد مسح البيانات؟',
+                messageInvalidFile: 'ملف غير صالح',
+            },
+            en: {
+                title: 'Work Hours Tracker',
+                fileOptionsTitle: 'File Options',
+                newFileButton: 'Create New File',
+                importFileButton: 'Import Existing File',
+                openFileButton: 'Open Current File',
+                entryFormTitle: 'Add New Entry',
+                dateLabel: 'Date:',
+                timeInLabel: 'Time In:',
+                timeOutLabel: 'Time Out:',
+                addEntryButton: 'Add',
+                messageFillFields: 'Please fill out all fields',
+                messageAdded: 'Entry added successfully',
+                messageUpdated: 'Entry updated successfully',
+                dataViewTitle: 'Full List',
+                colDate: 'Date',
+                colTimeIn: 'Time In',
+                colTimeOut: 'Time Out',
+                colHours: 'Hours',
+                colTotal: 'Total',
+                colActions: 'Actions',
+                saveButton: 'Export JSON',
+                confirmClear: 'Yes',
+                cancelClear: 'No',
+                languageToggle: 'Toggle Language',
+                edit: 'Edit',
+                delete: 'Delete',
+                confirmClearModal: 'Are you sure you want to clear the data?',
+                messageInvalidFile: 'Invalid file',
+            }
+        };
+
+        function translate() {
+            document.getElementById('title').textContent = translations[language].title;
+            document.getElementById('fileOptionsTitle').textContent = translations[language].fileOptionsTitle;
+            document.getElementById('newFileButton').textContent = translations[language].newFileButton;
+            document.getElementById('importFileButton').textContent = translations[language].importFileButton;
+            document.getElementById('openFileButton').textContent = translations[language].openFileButton;
+            document.getElementById('entryFormTitle').textContent = translations[language].entryFormTitle;
+            document.getElementById('dateLabel').textContent = translations[language].dateLabel;
+            document.getElementById('timeInLabel').textContent = translations[language].timeInLabel;
+            document.getElementById('timeOutLabel').textContent = translations[language].timeOutLabel;
+            document.getElementById('addEntryButton').textContent = translations[language].addEntryButton;
+            document.getElementById('dataViewTitle').textContent = translations[language].dataViewTitle;
+            document.getElementById('colDate').textContent = translations[language].colDate;
+            document.getElementById('colTimeIn').textContent = translations[language].colTimeIn;
+            document.getElementById('colTimeOut').textContent = translations[language].colTimeOut;
+            document.getElementById('colHours').textContent = translations[language].colHours;
+            document.getElementById('colTotal').textContent = translations[language].colTotal;
+            document.getElementById('colActions').textContent = translations[language].colActions;
+            document.getElementById('saveButton').textContent = translations[language].saveButton;
+            document.getElementById('languageToggle').textContent = translations[language].languageToggle;
+            document.getElementById('modalMessage').textContent = translations[language].confirmClearModal;
+            document.getElementById('confirmClear').textContent = translations[language].confirmClear;
+            document.getElementById('cancelClear').textContent = translations[language].cancelClear;
+            updateTable();
+        }
+
+        function toggleLanguage() {
+            language = language === 'ar' ? 'en' : 'ar';
+            translate();
+        }
+
+        function addEntry() {
+            const date = document.getElementById('date').value;
+            const timeIn = document.getElementById('timeIn').value;
+            const timeOut = document.getElementById('timeOut').value;
+
+            if (!date || !timeIn || !timeOut) {
+                document.getElementById('message').textContent = translations[language].messageFillFields;
+                return;
+            }
+
+            const timeInDate = new Date(`1970-01-01T${timeIn}:00`);
+            const timeOutDate = new Date(`1970-01-01T${timeOut}:00`);
+
+            // تعديل لحساب الساعات عند تجاوز منتصف الليل
+            if (timeOutDate < timeInDate) {
+                timeOutDate.setHours(timeOutDate.getHours() + 24);
+            }
+
+            const hoursWorked = (timeOutDate - timeInDate) / (1000 * 60 * 60);
+
+            if (editingIndex !== null) {
+                entries[editingIndex] = { date, timeIn, timeOut, hours: hoursWorked };
+                document.getElementById('message').textContent = translations[language].messageUpdated;
+                editingIndex = null;
+            } else {
+                entries.push({ date, timeIn, timeOut, hours: hoursWorked });
+                document.getElementById('message').textContent = translations[language].messageAdded;
+            }
+
+            totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+            updateTable();
+            saveToLocalStorage();
+        }
+
+        function updateTable() {
+            const table = document.getElementById('entriesTable');
+            table.innerHTML = `
+                <tr>
+                    <th id="colDate">${translations[language].colDate}</th>
+                    <th id="colTimeIn">${translations[language].colTimeIn}</th>
+                    <th id="colTimeOut">${translations[language].colTimeOut}</th>
+                    <th id="colHours">${translations[language].colHours}</th>
+                    <th id="colTotal">${translations[language].colTotal}</th>
+                    <th id="colActions">${translations[language].colActions}</th>
+                </tr>
+            `;
+            
+            entries.forEach((entry, index) => {
+                const row = table.insertRow(-1);
+                row.insertCell(0).textContent = entry.date;
+                row.insertCell(1).textContent = entry.timeIn;
+                row.insertCell(2).textContent = entry.timeOut;
+                row.insertCell(3).textContent = entry.hours.toFixed(2);
+                row.insertCell(4).textContent = index === entries.length - 1 ? totalHours.toFixed(2) : '';
+                const actionsCell = row.insertCell(5);
+
+                const editButton = document.createElement('button');
+                editButton.textContent = translations[language].edit;
+                editButton.className = 'blue-button';
+                editButton.onclick = () => editEntry(index);
+                actionsCell.appendChild(editButton);
+
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = translations[language].delete;
+                deleteButton.className = 'red-button';
+                deleteButton.onclick = () => deleteEntry(index);
+                actionsCell.appendChild(deleteButton);
+            });
+        }
+
+        function editEntry(index) {
+            const entry = entries[index];
+            document.getElementById('date').value = entry.date;
+            document.getElementById('timeIn').value = entry.timeIn;
+            document.getElementById('timeOut').value = entry.timeOut;
+            editingIndex = index;
+        }
+
+        function deleteEntry(index) {
+            entries.splice(index, 1);
+            totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+            updateTable();
+            saveToLocalStorage();
+        }
+
+        function showEntryForm() {
+            document.getElementById('entryForm').classList.remove('hidden');
+            document.getElementById('dataView').classList.remove('hidden');
+        }
+
+        function createNewFile() {
+            entries = [];
+            totalHours = 0;
+            updateTable();
+            showEntryForm();
+        }
+
+        function importFile() {
+            document.getElementById('fileInput').click();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result;
+                    try {
+                        entries = JSON.parse(content);
+                        totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+                        updateTable();
+                        showEntryForm();
+                    } catch (error) {
+                        alert(translations[language].messageInvalidFile);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        function exportToJSON() {
+            const data = JSON.stringify(entries);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const downloadLink = document.getElementById('downloadLink');
+            downloadLink.href = url;
+            downloadLink.download = 'work_hours.json';
+            downloadLink.click();
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('workHoursEntries', JSON.stringify(entries));
+        }
+
+        function loadFromLocalStorage() {
+            const storedEntries = localStorage.getItem('workHoursEntries');
+            if (storedEntries) {
+                entries = JSON.parse(storedEntries);
+                totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+                updateTable();
+            }
+        }
+
+        function confirmClearData() {
+            document.getElementById('modalMessage').textContent = translations[language].confirmClearModal;
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function hideClearDataModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        function clearData() {
+            entries = [];
+            totalHours = 0;
+            updateTable();
+            localStorage.removeItem('workHoursEntries'); // حذف البيانات من localStorage
+            hideClearDataModal();
+        }
+
+        function openCurrentFile() {
+            const storedEntries = localStorage.getItem('workHoursEntries');
+            if (storedEntries) {
+                entries = JSON.parse(storedEntries);
+                totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+                updateTable();
+                showEntryForm();
+                alert(language === 'ar' ? 'تم فتح الملف الحالي بنجاح.' : 'The current file was opened successfully.');
+            } else {
+                alert(language === 'ar' ? 'لا يوجد ملف مفتوح حاليًا.' : 'No file is currently open.');
+            }
+        }
+
+        // تغيير زر "حفظ القائمة" لتصدير JSON
+        document.getElementById('saveButton').onclick = exportToJSON;
+
+        window.onload = function() {
+            loadFromLocalStorage();
+            translate();
+        };
+    </script>
+</body>
+</html>
